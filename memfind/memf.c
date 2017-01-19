@@ -2,6 +2,7 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include <sys/uio.h>
 
@@ -12,7 +13,7 @@ struct options
 	char* fileName;
 };
 
-struct module
+struct region
 {
 	long start;
 	long end;
@@ -21,34 +22,51 @@ struct module
 	unsigned write;
 };
 
-void RunEqualSearch(FILE *mapsFile);
+void runEqualSearch();
+
+bool getRegions(struct region *regions, const struct options *opt)
+{
+	char mapLocation[255];
+
+	sprintf(mapLocation, "/proc/%i/maps", opt->pid);
+
+	FILE *maps_file = fopen(mapLocation, "rb");
+
+	if(!maps_file) {
+		printf("Make sure that pid is right. (Can't find map location)\n");
+		return false;
+	}
+
+	unsigned long start, end;
+	char permisions[4];
+
+	while(fscanf(maps_file, "%x-%x %s",&start, &end, permisions) != EOF)
+	{
+		printf("%x-%x %s\n", start, end, permisions);
+
+		fgetc(maps_file);
+	}
+
+	printf("Scanning done.\n");
+
+	return true;
+}
 
 void parse(const struct options *opt)
 {
 
 	if(!opt->pid || !opt->fileName || !opt->function)	{
 		printf("One of option arguments wrong.\n");
-		abort();
+		return;
 	}
 
-	char mapLocation[255];
+	FILE *output_file = fopen(opt->fileName, "rb");
 
-	sprintf(mapLocation, "/proc/%i/maps", opt->pid);
-
-	FILE *mapsFile = fopen(mapLocation, "rb");
-
-	if(!mapsFile) {
-		printf("Make sure that pid is right. (Can't find map location)\n");
-		abort();
-	}
-
-	FILE *outputFile = fopen(opt->fileName, "rb");
-
-	if(!outputFile) {
+	if(!output_file) {
 		printf("can't find previous file. Creating new one.\n");
-		outputFile = fopen(opt->fileName, "ab+");
-		fclose(outputFile);
-		outputFile = fopen(opt->fileName, "rb");
+		output_file = fopen(opt->fileName, "ab+");
+		fclose(output_file);
+		output_file = fopen(opt->fileName, "rb");
 	} 
 	else
 	{
@@ -57,11 +75,17 @@ void parse(const struct options *opt)
 
 	printf("You provided %s function.\n", opt->function);
 
+	struct region *to_scan;
+
+	if(!getRegions(to_scan, opt)) {
+		printf("Can't get regions of maps file");
+		return;
+	}
+
 	switch(*opt->function)
 	{
 		case 'e' :
 		{
-			RunEqualSearch(mapsFile);
 			break;
 		}
 
@@ -74,19 +98,9 @@ void parse(const struct options *opt)
 	}
 }
 
-void RunEqualSearch(FILE *mapsFile)
+void runEqualSearch()
 {
-	unsigned long start, end;
-	char permisions[4];
 
-	while(fscanf(mapsFile, "%x-%x %s",&start, &end, permisions) != EOF)
-	{
-		printf("%x-%x %s\n", start, end, permisions);
-
-		fgetc(mapsFile);
-	}
-
-	printf("Scanning done.\n");
 }
 
 int main(int argc, char *argv[])
