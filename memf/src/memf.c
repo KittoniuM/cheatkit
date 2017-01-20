@@ -4,81 +4,112 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <unistd.h>
 
-/*
- * struct map {
- * 	long long	from;
- * 	long long	to;
- * 	char		perms[4];
- * 	long		drv;
- * 	long		dev;
- * 	long		ino;
- * 	char		pathname[256];
- * };
- *
- * static enum memf_status memf_maps(const struct memf_args *args,
- * 				  struct map **maps, size_t *count)
- * {
- * 	char		 smaps[32];
- * 	char		 line[256];
- * 	FILE		*mapsf;
- * 	size_t		 lo_count;
- * 	struct map	*lo_maps;
- *
- * 	assert(args != NULL);
- * 	assert(maps != NULL);
- * 	assert(count != NULL);
- *
- * 	/\* snprintf should not run out of buffer space *\/
- * 	assert(snprintf(smaps, sizeof(smaps), "/proc/%llu/maps",
- * 			(unsigned long long) args->pid)
- * 	       < (int) sizeof(smaps));
- * 	if ((mapsf = fopen(smaps, "r")) == NULL)
- * 		return MEMF_ERR_IO;
- * 	lo_count = 0;
- * 	lo_maps  = NULL;
- * 	while (!feof(mapsf)) {
- * 		lo_count++;
- * 		lo_maps = realloc(lo_maps, lo_count);
- * 		fgets(line, (int) sizeof(line), mapsf);
- * 		sscanf(line, "%llx-%llx %4s %lx %5s %ld %s", );
- * 	}
- * 	fclose(mapsf);
- * }
- */
+struct mapd {
+	uint64_t	from;
+	uint64_t	to;
+	uint64_t	off;
+	int		prot;
+	int		flags;
+	char		path[256];
+};
 
-enum memf_status memf(const struct memf_args *args)
+static enum memf_status memf_maps(const struct memf_args *args,
+				  struct map **out_maps, size_t *out_maps_count)
 {
-	long	 pagesize = sysconf(_SC_PAGESIZE);
-	char	 smem[32];
-	int	 memfd;
-	char	*map;
+	char		 smaps[32];
+	FILE		*mapsf;
+	size_t		 maps_count;
+	struct mapd	*maps;
 
 	assert(args != NULL);
+	assert(out_maps != NULL);
+	assert(out_maps_count != NULL);
 
 	/* snprintf should not run out of buffer space */
+	assert(snprintf(smaps, sizeof(smaps), "/proc/%llu/maps",
+			(unsigned long long) args->pid)
+	       < (int) sizeof(smaps));
+	if ((mapsf = fopen(smaps, "r")) == NULL)
+		return MEMF_ERR_IO;
+	maps_count = 0;
+	maps = NULL;
+	while (!feof(mapsf)) {
+		char		line[256];
+		long long	from, to, off;
+		char		perms[5], path[256];
+		int		maj, min;
+		long		ino;
+
+		if (fgets(line, (int) sizeof(line), mapsf) == NULL)
+			break;
+		assert(sscanf(line, "%llx-%llx %4s %llx %d:%d %ld %s",
+			      &from, &to, perms, &off,
+			      &maj, &min, &ino, path) > 0);
+		maps_count++;
+		assert((maps = realloc(maps, sizeof(*maps) * maps_count))
+		       != NULL);
+		struct mapd *cur = &maps[maps_count - 1];
+		cur->from = (uint64_t) from;
+		cur->to   = (uint64_t) to;
+		cur->off  = (uint64_t) off;
+		cur->prot = (perms[0] == 'r' ? PROT_READ : 0)
+			| (perms[1] == 'w' ? PROT_WRITE : 0)
+			| (perms[2] == 'x' ? PROT_EXEC : 0);
+		cur->flags = (perms[3] == 'p' ? MAP_PRIVATE :
+			      perms[3] == 's' ? MAP_SHARED : 0);
+		strncpy(cur->path, path, sizeof(cur->path));
+	}
+	assert(fclose(mapsf) == 0);
+	*out_maps_count = maps_count;
+	*out_maps = maps;
+	return MEMF_OK;
+}
+
+static enum memf_status memf_look(const struct memf_args *args,
+				  const struct mapd *map)
+{
+	/* long	pagesize = sysconf(_SC_PAGESIZE); */
+	char	smem[32];
+	int	memfd;
+
+	assert(args != NULL);
+	assert(map != NULL);
+
 	assert(snprintf(smem, sizeof(smem), "/proc/%llu/mem",
 			(unsigned long long) args->pid)
 	       < (int) sizeof(smem));
-	/* TODO: Ignore any memory outside of ranges in maps */
-	if ((memfd = open(smem, O_RDONLY)) == -1)
+	memfd = open(smem, O_RDONLY);
+	if (memfd == -1)
 		return MEMF_ERR_IO;
-	for (uint64_t page = args->from & (uint64_t) (~pagesize + 1);
-	     page < args->to;
-	     page += (uint64_t) pagesize) {
-		/* printf("%p\n", page); */
-		if ((map = mmap(NULL, (size_t) pagesize, PROT_READ, MAP_SHARED,
-				memfd, (off_t) page)) == MAP_FAILED) {
-			continue;
-		}
-		printf("%p\n", map);
-		assert(munmap(map, (size_t) page) == 0);
+	for (size_t i = 0; i < maps_count; i++) {
+		size_t len = (size_t) (map->to - map->from);
+		char *mapmap = mmap(NULL, len, PROT_READ, MAP_PRIVATE,
+				    memfd, (off_t) map->from);
+		assert(mapmap != NULL);
+		/* ... */
+		assert(munmap(mapmap, len) == 0);
 	}
-	assert(close(memfd) == 0);
+	close(memfd);
+	return MEMF_OK;
+}
+
+enum memf_status memf(const struct memf_args *args)
+{
+	size_t			 maps_count;
+	struct mapd		*maps;
+	enum memf_status	 rc;
+
+	assert(args != NULL);
+
+	if ((rc = memf_maps(args, &maps, &maps_count)) != MEMF_OK)
+		return rc;
+	free(maps);
 	return MEMF_OK;
 }
