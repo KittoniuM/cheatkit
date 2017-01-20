@@ -131,7 +131,7 @@ int main(int argc, char **argv)
 		.pid   = 0,
 		.type  = TYPE_INVALID,
 		.align = 0,
-		.from  = 0x500000000000,
+		.from  = 0x0,
 		.to    = 0x7fffffffffffffff,
 		.func  = FUNC_INVALID,
 		.val   = 0,
