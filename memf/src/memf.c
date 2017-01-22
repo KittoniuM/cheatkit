@@ -72,10 +72,9 @@ static enum memf_status memf_maps(const struct memf_args *args,
 	return MEMF_OK;
 }
 
-static enum memf_status memf_look(const struct memf_args *args,
+/*static enum memf_status memf_look(const struct memf_args *args,
 				  const struct mapd *map)
 {
-	/* long	pagesize = sysconf(_SC_PAGESIZE); */
 	char	smem[32];
 	int	memfd;
 
@@ -93,10 +92,45 @@ static enum memf_status memf_look(const struct memf_args *args,
 		char *mapmap = mmap(NULL, len, PROT_READ, MAP_PRIVATE,
 				    memfd, (off_t) map->from);
 		assert(mapmap != NULL);
-		/* ... */
+		//...//
 		assert(munmap(mapmap, len) == 0);
 	}
 	close(memfd);
+	return MEMF_OK;
+}*/
+
+enum memf_status memf_compare(const struct memf_args *args, 
+					const struct mapd *map, size_t maps_count)
+{
+	char smem[32];
+	int mem_file;
+
+	assert(args != NULL);
+	assert(map != NULL);
+
+	/*Checking that snprintf didn't run out of given buffer space (32 bytes) */
+	assert(snprintf(smem, sizeof(smem), "/proc/%llu/mem", 
+			(unsigned long long) args->pid)
+			< (int) sizeof(smem));
+
+	mem_file = open(smem, O_RDONLY);
+	if(mem_file == -1)
+		return MEMF_ERR_IO;
+
+	for (size_t i = 0; i < maps_count; i++) {
+		size_t map_size = (size_t)(map->to - map->from); /*Calculating size of map region by subtracting end of the map from start*/
+		char *mapmap = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE,
+					mem_file, (off_t) map->from);
+
+		assert(mapmap != NULL);
+
+			switch(args->func)
+			{
+				/*....*/
+			}
+
+		assert(munmap(mapmap, map_size) == 0);
+	}
 	return MEMF_OK;
 }
 
