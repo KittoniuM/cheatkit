@@ -74,30 +74,7 @@ static enum memf_status memf_maps(const struct memf_args *args,
 
 static enum memf_status memf_look(const struct memf_args *args)
 {
-	/* long	pagesize = sysconf(_SC_PAGESIZE); */
-	char	smem[32];
-	int	memfd;
-
-	assert(args != NULL);
-	assert(map != NULL);
-
-	assert(snprintf(smem, sizeof(smem), "/proc/%llu/mem",
-			(unsigned long long) args->pid)
-	       < (int) sizeof(smem));
-	memfd = open(smem, O_RDONLY);
-	if (memfd == -1)
-		return MEMF_ERR_IO;
-	for (size_t i = 0; i < maps_count; i++) {
-		size_t len = (size_t) (map->to - map->from);
-		char *mapmap = mmap(NULL, len, PROT_READ, MAP_PRIVATE,
-				    memfd, (off_t) map->from);
-		assert(mapmap != NULL);
-		for (size_t p = 0; p < len; p++) {
-
-		}
-		assert(munmap(mapmap, len) == 0);
-	}
-	close(memfd);
+	assert(0);
 	return MEMF_OK;
 }
 
