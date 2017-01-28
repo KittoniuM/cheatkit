@@ -6,12 +6,12 @@
 
 enum token_type {
 	TOK_BEG,
-	TOK_FUN,
-	TOK_SINT,
-	TOK_UINT,
-	TOK_FLT,
-	TOK_STR,
 	TOK_END,
+	TOK_SYM,
+	TOK_STR,
+	TOK_INT,
+	TOK_FLT,
+	TOK_BAD_NAN,
 };
 
 typedef struct {
@@ -20,15 +20,16 @@ typedef struct {
 		int64_t		 sint;
 		uint64_t	 uint;
 		double		 flt;
-		const char	*str;
+		char		*str;
 	} value;
 } token_t;
 
 typedef struct {
-	token_t		*tokens;
-	size_t		 num_tokens;
+	token_t	*tokens;
+	size_t	 num_tokens;
 } program_t;
 
-void lisp_ldprog(program_t *prog, const char *src, size_t src_len);
+void lisp_ldprog(program_t *prog, const char *src);
+void lisp_free(program_t *prog);
 
 #endif /* __LISP_H__ */

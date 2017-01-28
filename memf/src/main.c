@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 
 #include "memf.h"
+#include "lisp.h"
 
 typedef struct {
 	char		*text;
@@ -176,20 +177,42 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (args.pid == 0) {
-		fprintf(stderr, "memf: error: pid is not set\n");
-		return EXIT_FAILURE;
-	} else if (args.type == TYPE_INVALID) {
-		fprintf(stderr, "memf: error: bad type\n");
-		return EXIT_FAILURE;
-	} else if (args.func == FUNC_INVALID) {
-		fprintf(stderr, "memf: error: bad function\n");
-		return EXIT_FAILURE;
-	} else if (args.to <= args.from) {
-		fprintf(stderr, "memf: error: bad range\n");
-		return EXIT_FAILURE;
-	}
+	/*
+	 * if (args.pid == 0) {
+	 * 	fprintf(stderr, "memf: error: pid is not set\n");
+	 * 	return EXIT_FAILURE;
+	 * } else if (args.type == TYPE_INVALID) {
+	 * 	fprintf(stderr, "memf: error: bad type\n");
+	 * 	return EXIT_FAILURE;
+	 * } else if (args.func == FUNC_INVALID) {
+	 * 	fprintf(stderr, "memf: error: bad function\n");
+	 * 	return EXIT_FAILURE;
+	 * } else if (args.to <= args.from) {
+	 * 	fprintf(stderr, "memf: error: bad range\n");
+	 * 	return EXIT_FAILURE;
+	 * }
+	 */
 
-	enum memf_status rc = memf(&args);
+	program_t prog;
+	lisp_ldprog(&prog, "(= (u32) 0xdeadbeef)");
+	for (size_t i = 0; i < prog.num_tokens; i++) {
+		token_t *tok = &prog.tokens[i];
+		switch (tok->type) {
+		case TOK_BEG:
+			printf("(\n");
+			break;
+		case TOK_END:
+			printf(")\n");
+			break;
+		case TOK_SYM:
+			printf("%s\n", tok->value.str);
+			break;
+		default:
+			printf("whatever.\n");
+		}
+	}
+	lisp_free(&prog);
+
+	/* enum memf_status rc = memf(&args); */
 	return EXIT_SUCCESS;
 }
