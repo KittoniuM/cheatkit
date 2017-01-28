@@ -1,1 +1,3 @@
-main.o: src/main.c
+main.o: src/main.c src/memf.h src/lisp.h
+lisp.o: src/lisp.c src/lisp.h
+memf.o: src/memf.c src/memf.h
