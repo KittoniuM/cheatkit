@@ -194,7 +194,7 @@ int main(int argc, char **argv)
 	 */
 
 	program_t prog;
-	lisp_ldprog(&prog, "(= (u32) 0xdeadbeef)");
+	lisp_ldprog(&prog, "(= u32 \"hello, world!\")");
 	for (size_t i = 0; i < prog.num_tokens; i++) {
 		token_t *tok = &prog.tokens[i];
 		switch (tok->type) {
@@ -205,10 +205,17 @@ int main(int argc, char **argv)
 			printf(")\n");
 			break;
 		case TOK_SYM:
-			printf("%s\n", tok->value.str);
+			printf("sym %s\n", tok->value.str);
+			break;
+		case TOK_INT:
+			printf("int %d\n", tok->value.sint);
+			break;
+		case TOK_STR:
+			printf("str %s\n", tok->value.str);
 			break;
 		default:
-			printf("whatever.\n");
+			printf("??\n");
+			break;
 		}
 	}
 	lisp_free(&prog);
