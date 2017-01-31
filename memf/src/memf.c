@@ -12,19 +12,19 @@
 #include <unistd.h>
 
 struct maps_e {
-	uint64_t	from;
-	uint64_t	to;
-	uint64_t	off;
-	int		prot;
-	int		flags;
-	char		path[256];
+	unsigned long long	from;
+	unsigned long long	to;
+	unsigned long long	off;
+	int			prot;
+	int			flags;
+	char			path[256];
 };
 
 static enum memf_status memf_maps(const struct memf_args *args,
 				  struct map **out_maps, size_t *out_maps_count)
 {
 	char		 smaps[32];
-	FILE		*mapsf;
+	FILE		*mapsfd;
 	size_t		 maps_count;
 	struct maps_e	*maps;
 
@@ -36,10 +36,10 @@ static enum memf_status memf_maps(const struct memf_args *args,
 	assert(snprintf(smaps, sizeof(smaps), "/proc/%llu/maps",
 			(unsigned long long) args->pid)
 	       < (int) sizeof(smaps));
-	if ((mapsf = fopen(smaps, "r")) == NULL)
+	if ((mapsfd = fopen(smaps, "r")) == NULL)
 		return MEMF_ERR_IO;
 	maps_count = 0;
-	maps = NULL;
+	maps = malloc(1 * sizeof(*maps));
 	do {
 		char		line[256];
 		long long	from, to, off;
@@ -47,7 +47,8 @@ static enum memf_status memf_maps(const struct memf_args *args,
 		int		maj, min;
 		long		ino;
 
-		assert(fgets(line, (int) sizeof(line), mapsf) == NULL);
+		/* TODO: work on this */
+		assert(fgets(line, (int) sizeof(line), mapsfd) == NULL);
 		assert(sscanf(line, "%llx-%llx %4s %llx %d:%d %ld %s",
 			      &from, &to, perms, &off,
 			      &maj, &min, &ino, path) > 0);
@@ -65,8 +66,8 @@ static enum memf_status memf_maps(const struct memf_args *args,
 		cur->flags = (perms[3] == 'p' ? MAP_PRIVATE :
 			      perms[3] == 's' ? MAP_SHARED : 0);
 		strncpy(cur->path, path, sizeof(cur->path));
-	} while (!feof(mapsf));
-	assert(fclose(mapsf) == 0);
+	} while (!feof(mapsfd));
+	assert(fclose(mapsfd) == 0);
 	*out_maps_count = maps_count;
 	*out_maps = maps;
 	return MEMF_OK;

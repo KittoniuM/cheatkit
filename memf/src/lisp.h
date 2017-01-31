@@ -11,25 +11,32 @@ enum token_type {
 	TOK_STR,
 	TOK_INT,
 	TOK_FLT,
-	TOK_BAD_NAN,
+	TOK_ILL,
+};
+
+enum synv_status {
+	SYNV_OK,
+	SYNV_BRACKET,
+	SYNV_ILLTOKEN,
 };
 
 typedef struct {
+	size_t		col;
 	enum token_type type;
 	union token_value {
-		int64_t		 sint;
-		uint64_t	 uint;
-		double		 flt;
-		char		*str;
+		int64_t	 sint;
+		double	 flt;
+		char	*str;
 	} value;
-} token_t;
+} lisp_token_t;
 
 typedef struct {
-	token_t	*tokens;
-	size_t	 num_tokens;
-} program_t;
+	lisp_token_t	*tokens;
+	size_t		 num_tokens;
+} lisp_program_t;
 
-void lisp_ldprog(program_t *prog, const char *src);
-void lisp_free(program_t *prog);
+void			lisp_ldprog(lisp_program_t *prog, const char *src);
+enum synv_status	lisp_synv(lisp_program_t *prog, size_t *col);
+void			lisp_free(lisp_program_t *prog);
 
 #endif /* __LISP_H__ */
