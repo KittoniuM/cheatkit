@@ -16,12 +16,12 @@ enum token_type {
 
 enum synv_status {
 	SYNV_OK,
-	SYNV_BRACKET,
-	SYNV_ILLTOKEN,
+	SYNV_EMPTY,
+	SYNV_SCOPE,
+	SYNV_ILLTOK,
 };
 
 typedef struct {
-	size_t		col;
 	enum token_type type;
 	union token_value {
 		int64_t	 sint;
@@ -36,7 +36,7 @@ typedef struct {
 } lisp_program_t;
 
 void			lisp_ldprog(lisp_program_t *prog, const char *src);
-enum synv_status	lisp_synv(lisp_program_t *prog, size_t *col);
+enum synv_status	lisp_synv(lisp_program_t *prog);
 void			lisp_free(lisp_program_t *prog);
 
 #endif /* __LISP_H__ */

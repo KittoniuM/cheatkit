@@ -1,8 +1,10 @@
 #include "lisp.h"
 
 #include <assert.h>
-#include <stdlib.h>
 #include <stdbool.h>
+#include <stdlib.h>
+
+#define MAX_CHARS 0x100
 
 typedef struct {
 	const char	*src;
@@ -10,11 +12,11 @@ typedef struct {
 } lexer_t;
 
 typedef struct {
-	char	*str;
-	int	 sign;
-	int	 base;
-	bool	 ill;
-	bool	 flt;
+	char	str[MAX_CHARS];
+	int	sign;
+	int	base;
+	bool	ill;
+	bool	flt;
 } lexer_num_t;
 
 static char cur(const lexer_t *lex)
@@ -72,9 +74,8 @@ static void tok_str(lexer_t *lex, lisp_token_t *tok)
 	step(lex);
 
 	pos = 0;
-	str = malloc(1);
+	str = malloc(MAX_CHARS);
 	while (1) {
-		str = realloc(str, pos + 1);
 		switch (c = cur(lex)) {
 		case '\0':
 		case '"':
@@ -103,10 +104,8 @@ static void tok_sym(lexer_t *lex, lisp_token_t *tok)
 	char	 c;
 
 	pos = 0;
-	str = malloc(1);
+	str = malloc(MAX_CHARS);
 	while (1) {
-		/* allocate amount of chars needed + null terminator */
-		str = realloc(str, pos + 1);
 		switch (c = cur(lex)) {
 		case '\0':
 		case ' ': case '\t': case '\n': case '\r':
@@ -202,13 +201,11 @@ static void tok_num(lexer_t *lex, lisp_token_t *tok)
 {
 	size_t		pos = 0;
 	char		c;
-	lexer_num_t	num;
+	lexer_num_t	num = {0};
 
-	num.str = malloc(1);
 	num.sign = tok_num_sign(lex);
 	num.base = tok_num_base(lex);
 	while (1) {
-		num.str = realloc(num.str, pos + 1);
 		switch (c = cur(lex)) {
 		case '\0':
 		case ' ': case '\t': case '\n': case '\r':
@@ -216,7 +213,6 @@ static void tok_num(lexer_t *lex, lisp_token_t *tok)
 			assert(pos > 0);
 			num.str[pos] = '\0';
 			tok_fromnum(&num, tok);
-			free(num.str);
 			return;
 		case '.':
 			/* numbers can only have one dot in them */
@@ -247,15 +243,12 @@ void lisp_ldprog(lisp_program_t *prog, const char *src)
 	lexer_t		lex;
 	lisp_token_t	tok;
 
-	assert(prog != NULL);
-
 	prog->tokens = NULL;
 	prog->num_tokens = 0;
 
 	lex.src = src;
 	lex.cur = 0;
 	while (1) {
-		tok.col = lex.cur;
 		switch (cur(&lex)) {
 		case '\0':
 			return;
@@ -293,44 +286,33 @@ void lisp_ldprog(lisp_program_t *prog, const char *src)
 	assert(0);
 }
 
-enum synv_status lisp_synv(lisp_program_t *prog, size_t *col)
+enum synv_status lisp_synv(lisp_program_t *prog)
 {
-	int		 bal = 0;
-	size_t		 cols[256];
 	lisp_token_t	*tok;
+	int		 bal;
+
+	if (prog->num_tokens == 0)
+		return SYNV_EMPTY;
+	bal = 0;
 	for (size_t i = 0; i < prog->num_tokens; i++) {
 		tok = &prog->tokens[i];
 		switch (tok->type) {
 		case TOK_BEG:
-			/* remember column of this opening bracket */
-			cols[bal % 256] = tok->col;
 			bal++;
 			break;
 		case TOK_END:
 			bal--;
-			/*
-			 * If there are more closing than opening brackets,
-			 * throw error immediately.
-			 */
-			if (bal < 0) {
-				*col = tok->col;
-				return SYNV_BRACKET;
-			}
+			if (bal < 0)
+				return SYNV_SCOPE;
 			break;
 		case TOK_ILL:
-			*col = tok->col;
-			return SYNV_ILLTOKEN;
+			return SYNV_ILLTOK;
+		default:
+			break;
 		}
 	}
-	if (bal != 0) {
-		/*
-		 * At this point there can be no more
-		 * closing than opening brackets.
-		 */
-		assert(bal > 0);
-		*col = cols[bal - 1];
-		return SYNV_BRACKET;
-	}
+	if (bal != 0)
+		return SYNV_SCOPE;
 	return SYNV_OK;
 }
 
