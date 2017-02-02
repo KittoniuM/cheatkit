@@ -7,26 +7,30 @@
 
 enum memf_status {
 	MEMF_OK,
+	MEMF_ERR_PROC,
 	MEMF_ERR_IO,
 };
 
-union memf_value {
-	int8_t		i8;
-	int16_t		i16;
-	int32_t		i32;
-	int64_t		i64;
-	uint8_t		u8;
-	uint16_t	u16;
-	uint32_t	u32;
-	uint64_t	u64;
-	float		f32;
-	double		f64;
-};
+/*
+ * union memf_value {
+ * 	int8_t		i8;
+ * 	int16_t		i16;
+ * 	int32_t		i32;
+ * 	int64_t		i64;
+ * 	uint8_t		u8;
+ * 	uint16_t	u16;
+ * 	uint32_t	u32;
+ * 	uint64_t	u64;
+ * 	float		f32;
+ * 	double		f64;
+ * };
+ */
 
 struct memf_args {
-	uint64_t	pid;
-	uint64_t	from;
-	uint64_t	to;
+	unsigned long	pid;
+	unsigned long	from;
+	unsigned long	to;
+	char		mask[3];
 	lisp_program_t	prog;
 };
 

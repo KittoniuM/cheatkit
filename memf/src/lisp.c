@@ -295,13 +295,16 @@ enum synv_status lisp_synv(lisp_program_t *prog)
 		return SYNV_EMPTY;
 	bal = 0;
 	for (size_t i = 0; i < prog->num_tokens; i++) {
-		tok = &prog->tokens[i];
-		switch (tok->type) {
+		switch ((tok = &prog->tokens[i])->type) {
 		case TOK_BEG:
 			bal++;
 			break;
 		case TOK_END:
 			bal--;
+			/*
+			 * At this point, there are more opening brackets
+			 * than closing one which means bad source.
+			 */
 			if (bal < 0)
 				return SYNV_SCOPE;
 			break;

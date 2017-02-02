@@ -1,3 +1,8 @@
 main.o: src/main.c src/memf.h src/lisp.h
 lisp.o: src/lisp.c src/lisp.h
-memf.o: src/memf.c src/memf.h
+memf.o: src/memf.c src/memf.h src/lisp.h src/memf_lisp.h
+memf_lisp.o: src/memf_lisp.c src/memf_lisp.h src/lisp.h src/memf.h \
+ src/memf_lisp_env.h
+memf_lisp_env.o: src/memf_lisp_env.c src/memf_lisp_env.h src/memf.h \
+ src/lisp.h
+memf_proc.o: src/memf_proc.c src/memf_proc.h

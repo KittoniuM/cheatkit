@@ -24,8 +24,7 @@ static const char usage[] =
 	"  pi                          Pi constant.\n"
 	"  nan,inf+,inf-               IEEE 754 special floating point non-numeric\n"
 	"                              values.\n"
-	"  (+,* ...)                   Sum, product.\n"
-	"  (-,/ a b)                   Difference and division.\n"
+	"  (+,*,-,/ a b)               Arithmetics.\n"
 	"\n"
 	"  (trunc a)                   Strip fraction part.\n"
 	"  (floor a)                   Round down.\n"
@@ -35,8 +34,8 @@ static const char usage[] =
 	"  (~ a)                       Bitwise not.\n"
 	"  (&,|,^ a b)                 Bitwise and, or and xor of two integers.\n"
 	"\n"
-	"  (=,!= a ...)                Test at least two numbers for equality.\n"
-	"  (f=,f!= a ...)              Test at least two numbers for equality, with\n"
+	"  (=,!= a b)                  Test at least two numbers for equality.\n"
+	"  (f=,f!= a b)                Test at least two numbers for equality, with\n"
 	"                              tolerance for inaccuracies in floating point\n"
 	"                              numbers.\n"
 	"  (<,>,<=,>= a b)             Compare two numbers.\n"
@@ -108,6 +107,8 @@ int main(int argc, char **argv)
 	}
 
 	switch (lisp_synv(&args.prog)) {
+	case SYNV_OK:
+		break;
 	case SYNV_EMPTY:
 		fprintf(stderr, "memf: error: program is empty\n");
 		goto fail;
@@ -118,7 +119,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "memf: error: illegal token\n");
 		goto fail;
 	default:
-		break;
+		assert(0);
 	}
 
 	switch (rc = memf(&args)) {
@@ -130,6 +131,8 @@ int main(int argc, char **argv)
 	case MEMF_ERR_IO:
 		fprintf(stderr, "memf: error: nigger error\n");
 		goto fail;
+	default:
+		assert(0);
 	}
 	lisp_free(&args.prog);
 	return EXIT_SUCCESS;

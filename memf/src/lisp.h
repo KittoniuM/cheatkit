@@ -1,6 +1,7 @@
 #ifndef __LISP_H__
 #define __LISP_H__
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -20,6 +21,24 @@ enum synv_status {
 	SYNV_SCOPE,
 	SYNV_ILLTOK,
 };
+
+enum lisp_value_type {
+	TYPE_BOOL,
+	TYPE_INT,
+	TYPE_FLT,
+	TYPE_STR,
+	TYPE_ILL,
+};
+
+typedef struct {
+	enum lisp_value_type type;
+	union lisp_value {
+		bool	 sbool;
+		int64_t	 sint;
+		double	 flt;
+		char	*str;
+	} value;
+} lisp_result_t;
 
 typedef struct {
 	enum token_type type;

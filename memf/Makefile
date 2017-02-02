@@ -2,11 +2,11 @@ NAME=memf
 RELEASE="0.0a"
 COMMIT="$(shell test -d .git && git rev-parse HEAD || echo)"
 
-CFLAGS= -O0 \
+CFLAGS= -O3 \
 	-ftrapv -g \
 	-std=c11 \
 	-Wall -Wextra -Wshadow -Wformat -Wconversion -Wdouble-promotion \
-	-Waggregate-return -Wstrict-prototypes \
+	-Wstrict-prototypes \
 	-pipe
 CMACROS=-D __RELEASE__=$(RELEASE) \
 	-D __COMMIT__=$(COMMIT)
@@ -14,7 +14,7 @@ LDFLAGS=-lm
 
 TESTS=$(wildcard tests/*.test)
 AMALG=src/.amalg.c
-SRC=src/main.c src/lisp.c src/memf.c
+SRC=src/main.c src/lisp.c src/memf.c src/memf_lisp.c src/memf_lisp_env.c src/memf_proc.c
 OBJ=$(SRC:.c=.o)
 OUT=$(NAME)
 

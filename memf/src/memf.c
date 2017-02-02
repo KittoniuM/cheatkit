@@ -1,7 +1,10 @@
+#define _GNU_SOURCE
+
 #include "memf.h"
 
 #include <assert.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,64 +14,54 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-struct maps_e {
-	unsigned long long	from;
-	unsigned long long	to;
-	unsigned long long	off;
-	int			prot;
-	int			flags;
-	char			path[256];
+#include "lisp.h"
+#include "memf_lisp.h"
+/* #include "memf_proc.h" */
+
+struct map_e {
+	unsigned long	from;
+	unsigned long	to;
+	char		perms[4];
+	unsigned long	off;
+	int		devmaj;
+	int		devmin;
+	unsigned long	ino;
+	bool		has_file;
+	char		file[256];
 };
 
 static enum memf_status memf_maps(const struct memf_args *args,
-				  struct map **out_maps, size_t *out_maps_count)
+				  struct map_e **out_maps, size_t *out_maps_count)
 {
 	char		 smaps[32];
 	FILE		*mapsfd;
-	size_t		 maps_count;
-	struct maps_e	*maps;
-
-	assert(args != NULL);
-	assert(out_maps != NULL);
-	assert(out_maps_count != NULL);
+	size_t		 line_len = 0;
+	char		*line = NULL;
+	size_t		 cur;
+	struct map_e	*maps;
 
 	/* snprintf should not run out of buffer space */
-	assert(snprintf(smaps, sizeof(smaps), "/proc/%llu/maps",
-			(unsigned long long) args->pid)
+	assert(snprintf(smaps, sizeof(smaps), "/proc/%lu/maps", args->pid)
 	       < (int) sizeof(smaps));
 	if ((mapsfd = fopen(smaps, "r")) == NULL)
-		return MEMF_ERR_IO;
-	maps_count = 0;
+		return MEMF_ERR_PROC;
+	cur = 0;
 	maps = malloc(1 * sizeof(*maps));
-	do {
-		char		line[256];
-		long long	from, to, off;
-		char		perms[5], path[256];
-		int		maj, min;
-		long		ino;
-
-		/* TODO: work on this */
-		assert(fgets(line, (int) sizeof(line), mapsfd) == NULL);
-		assert(sscanf(line, "%llx-%llx %4s %llx %d:%d %ld %s",
-			      &from, &to, perms, &off,
-			      &maj, &min, &ino, path) > 0);
-		maps_count++;
-		assert((maps = realloc(maps, sizeof(*maps) * maps_count))
-		       != NULL);
-
-		struct maps_e *cur = &maps[maps_count - 1];
-		cur->from = (uint64_t) from;
-		cur->to   = (uint64_t) to;
-		cur->off  = (uint64_t) off;
-		cur->prot = (perms[0] == 'r' ? PROT_READ  : 0)
-			  | (perms[1] == 'w' ? PROT_WRITE : 0)
-			  | (perms[2] == 'x' ? PROT_EXEC  : 0);
-		cur->flags = (perms[3] == 'p' ? MAP_PRIVATE :
-			      perms[3] == 's' ? MAP_SHARED : 0);
-		strncpy(cur->path, path, sizeof(cur->path));
-	} while (!feof(mapsfd));
-	assert(fclose(mapsfd) == 0);
-	*out_maps_count = maps_count;
+	while (getline(&line, &line_len, mapsfd) != -1) {
+		struct map_e *map;
+		maps = realloc(maps, (cur + 1) * sizeof(*maps));
+		map  = &maps[cur];
+		assert(sscanf(line, "%lx-%lx %4s %lx %x:%x %lu",
+			      &map->from, &map->to, map->perms, &map->off,
+			      &map->devmaj, &map->devmin, &map->ino)
+		       == 7);
+		/* an optional file field */
+		map->has_file = sscanf(line, "%256s", map->file) == 1;
+		cur++;
+	}
+	free(line);
+	fclose(mapsfd);
+	*out_maps_count = cur + 1;
 	*out_maps = maps;
 	return MEMF_OK;
 }
@@ -81,14 +74,17 @@ static enum memf_status memf_look(const struct memf_args *args)
 
 enum memf_status memf(const struct memf_args *args)
 {
-	size_t			 maps_count;
-	struct maps_e		*maps;
+	size_t			 maps_cnt;
+	struct map_e		*maps;
 	enum memf_status	 rc;
 
-	assert(args != NULL);
-
-	if ((rc = memf_maps(args, &maps, &maps_count)) != MEMF_OK)
-		return rc;
-	free(maps);
+	lisp_result_t res = memf_lisp_eval(&args->prog);
+	printf("%d\n", res.value.sint);
+	printf("%f\n", res.value.flt);
+	/*
+	 * if ((rc = memf_maps(args, &maps, &maps_cnt)) != MEMF_OK)
+	 * 	return rc;
+	 * free(maps);
+	 */
 	return MEMF_OK;
 }
