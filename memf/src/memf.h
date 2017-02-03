@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#include "lisp.h"
-
 enum memf_status {
 	MEMF_OK,
 	MEMF_ERR_PROC,
@@ -31,7 +29,6 @@ struct memf_args {
 	unsigned long	from;
 	unsigned long	to;
 	char		mask[3];
-	lisp_program_t	prog;
 };
 
 /*

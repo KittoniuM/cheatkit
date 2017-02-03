@@ -14,7 +14,7 @@ LDFLAGS=-lm
 
 TESTS=$(wildcard tests/*.test)
 AMALG=src/.amalg.c
-SRC=src/main.c src/lisp.c src/memf.c src/memf_lisp.c src/memf_lisp_env.c src/memf_proc.c
+SRC=src/main.c src/memf.c src/memf_proc.c
 OBJ=$(SRC:.c=.o)
 OUT=$(NAME)
 

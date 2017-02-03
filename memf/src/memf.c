@@ -14,8 +14,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "lisp.h"
-#include "memf_lisp.h"
 /* #include "memf_proc.h" */
 
 struct map_e {
@@ -78,9 +76,6 @@ enum memf_status memf(const struct memf_args *args)
 	struct map_e		*maps;
 	enum memf_status	 rc;
 
-	lisp_result_t res = memf_lisp_eval(&args->prog);
-	printf("%d\n", res.value.sint);
-	printf("%f\n", res.value.flt);
 	/*
 	 * if ((rc = memf_maps(args, &maps, &maps_cnt)) != MEMF_OK)
 	 * 	return rc;
