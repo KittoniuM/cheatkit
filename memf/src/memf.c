@@ -4,15 +4,11 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <float.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <fcntl.h>
-#include <unistd.h>
 
 struct map_e {
 	unsigned long long	from;
@@ -46,27 +42,71 @@ static size_t type_align(enum memf_type type)
 
 static bool memf_test(const struct memf_args *args, void *ptr)
 {
+	bool	is_int;
+	bool	is_flt;
+	int64_t i;
+	double	f;
+
 	switch (args->type) {
 	case TYPE_I8:
-		return *(int8_t *)ptr  == (int8_t) args->value.i;
+		is_int = true;
+		i = *(int8_t *)ptr  - (int8_t) args->value.i;
+		break;
 	case TYPE_I16:
-		return *(int16_t *)ptr == (int16_t) args->value.i;
+		is_int = true;
+		i = *(int16_t *)ptr - (int16_t) args->value.i;
+		break;
 	case TYPE_I32:
-		return *(int32_t *)ptr == (int32_t) args->value.i;
+		is_int = true;
+		i = *(int32_t *)ptr - (int32_t) args->value.i;
+		break;
 	case TYPE_I64:
-		return *(int64_t *)ptr == (int64_t) args->value.i;
+		is_int = true;
+		i = *(int64_t *)ptr - (int64_t) args->value.i;
+		break;
 	case TYPE_F32:
-		return *(float *)ptr   == (float) args->value.f;
+		is_flt = true;
+		f = *(float *)ptr   - (float) args->value.f;
+		break;
 	case TYPE_F64:
-		return *(double *)ptr  == (double) args->value.f;
+		is_flt = true;
+		f = *(double *)ptr  - (double) args->value.f;
+		break;
+	default:
+		assert(0);
+	}
+	switch (args->func) {
+	case FUNC_EQ:
+		return is_int ? i == 0
+			: args->type == TYPE_F32 ? f < (double) DBL_EPSILON
+			: args->type == TYPE_F64 ? f < DBL_EPSILON
+			: false;
+	case FUNC_NE:
+		return is_int ? i != 0
+			: args->type == TYPE_F32 ? f >= (double) DBL_EPSILON
+			: args->type == TYPE_F64 ? f >= DBL_EPSILON
+			: false;
+	case FUNC_LT: return is_int ? i < 0 : is_flt ? f < 0.0 : false;
+	case FUNC_GT: return is_int ? i > 0 : is_flt ? f > 0.0 : false;
+	case FUNC_LE: return is_int ? i <= 0 : is_flt ? f <= 0.0 : false;
+	case FUNC_GE: return is_int ? i >= 0 : is_flt ? f >= 0.0 : false;
 	default:
 		assert(0);
 	}
 }
 
+static bool memf_maskmap(const struct map_e *map, const char mask[4])
+{
+	for (size_t i = 0; i < 4; i++) {
+		if (mask[i] != '?' && map->perms[i] != mask[i])
+			return false;
+	}
+	return true;
+}
+
 static enum memf_status memf_maps(const struct memf_args *args,
 				  struct map_e	**out_maps,
-				  size_t	 *out_maps_count)
+				  size_t	 *out_mapsn)
 {
 	char		 smaps[32];
 	FILE		*mapsf;
@@ -102,13 +142,15 @@ static enum memf_status memf_maps(const struct memf_args *args,
 	}
 	free(line);
 	fclose(mapsf);
-	*out_maps_count = cur;
+	*out_mapsn = cur;
 	*out_maps = maps;
 	return MEMF_OK;
 }
 
-enum memf_status memf_lookmap(const struct memf_args	*args,
-			      struct map_e		*map)
+enum memf_status memf_lookmap(const struct memf_args	 *args,
+			      const struct map_e	 *map,
+			      struct memf_store		**out_stores,
+			      size_t			 *out_storesn)
 {
 	char			 smem[32];
 	void			*buf;
@@ -165,15 +207,18 @@ enum memf_status memf(const struct memf_args *args)
 	for (size_t i = 0; i < mapsn; i++) {
 		struct map_e *map = &maps[i];
 
-		if (memf_lookmap(args, map) != MEMF_OK)
-		if (args->verbose) {
-			printf("memf: failed map %zu %s %016llx-%016llx %s\n",
-			       i,
-			       maps[i].perms,
-			       maps[i].from,
-			       maps[i].to,
-			       maps[i].has_file ? maps[i].file : "");
-		}
+		if (!memf_maskmap(map, args->mask))
+			continue;
+		if (memf_lookmap(args, map, NULL, NULL) == MEMF_OK)
+			if (args->verbose) {
+				printf("memf: failed map: "
+				       "%zu %s %016llx-%016llx %s\n",
+				       i,
+				       maps[i].perms,
+				       maps[i].from,
+				       maps[i].to,
+				       maps[i].has_file ? maps[i].file : "");
+			}
 	}
 	free(maps);
 	return MEMF_OK;

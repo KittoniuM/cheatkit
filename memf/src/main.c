@@ -44,8 +44,6 @@ static enum memf_func to_func(const char *str)
 		{">",  FUNC_GT},
 		{"<=", FUNC_LE},
 		{">=", FUNC_GE},
-		{"><", FUNC_IN},
-		{"<>", FUNC_EX},
 	};
 	for (size_t i = 0; i < sizeof(aliases) / sizeof(*aliases); i++) {
 		if (strcmp(aliases[i].a, str) == 0)
@@ -75,11 +73,11 @@ static union memf_value to_value(enum memf_type type, const char *str)
 
 static void from_f(struct memf_args *args, const char *str)
 {
-	char	type_str[32], func_str[32], from[32], to[32];
+	char	type_str[32], func_str[32], value_str[32];
 	int	c;
 
-	if ((c = sscanf(str, "%32[^,],%32[^,],%32[^-]-%32[^-]",
-			type_str, func_str, from, to)) >= 3) {
+	if ((c = sscanf(str, "%32[^,],%32[^,],%32[^-]",
+			type_str, func_str, value_str)) >= 3) {
 		if (type_str[0] == '^') {
 			args->noalign = true;
 			args->type = to_type(&type_str[1]);
@@ -92,14 +90,7 @@ static void from_f(struct memf_args *args, const char *str)
 			args->type = TYPE_ILL;
 			args->func = FUNC_ILL;
 		} else {
-			if (c >= 4) {
-				args->ranged = true;
-				args->vfrom = to_value(args->type, from);
-				args->vto = to_value(args->type, to);
-			} else {
-				args->ranged = false;
-				args->value = to_value(args->type, from);
-			}
+			args->value = to_value(args->type, value_str);
 		}
 	} else {
 		args->type = TYPE_ILL;
@@ -114,6 +105,7 @@ int main(int argc, char **argv)
 		{"verbose", required_argument, NULL, 'v'},
 		{"pid",     required_argument, NULL, 'p'},
 		{"range",   required_argument, NULL, 'r'},
+		{"mask",    required_argument, NULL, 'm'},
 		{"func",    required_argument, NULL, 'f'},
 		/* add -s that converts everything to human-readable table */
 		{0}
@@ -123,19 +115,16 @@ int main(int argc, char **argv)
 		.pid	 = 0,
 		.from	 = 0,
 		.to	 = 0x7fffffffffffffff,
-		.mask	 = "rw-p",
+		.mask	 = "r?-p",
 		.noalign = false,
-		.ranged	 = false,
 		.type	 = TYPE_ILL,
 		.func	 = FUNC_ILL,
 		.value	 = {0},
-		.vfrom	 = {0},
-		.vto	 = {0},
 	};
 	enum memf_status rc;
 	int c, option_index;
 
-	while ((c = getopt_long(argc, argv, "hvp:r:f:",
+	while ((c = getopt_long(argc, argv, "hvp:r:m:f:",
 				long_options, &option_index)) != -1) {
 		switch (c) {
 		case 'h':
@@ -149,6 +138,9 @@ int main(int argc, char **argv)
 			break;
 		case 'r':
 			sscanf(optarg, "%llx-%llx", &args.from, &args.to);
+			break;
+		case 'm':
+			sscanf(optarg, "%4s", args.mask);
 			break;
 		case 'f':
 			from_f(&args, optarg);

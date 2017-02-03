@@ -3,7 +3,7 @@ RELEASE="0.0a"
 COMMIT="$(shell test -d .git && git rev-parse HEAD || echo)"
 
 CFLAGS= -O3 \
-	-ftrapv -g \
+	-g \
 	-std=c11 \
 	-Wall -Wextra -Wshadow -Wformat -Wconversion -Wdouble-promotion \
 	-Wstrict-prototypes \

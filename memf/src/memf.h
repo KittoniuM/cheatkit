@@ -42,8 +42,6 @@ enum memf_func {
 	FUNC_GT,
 	FUNC_LE,
 	FUNC_GE,
-	FUNC_IN,
-	FUNC_EX,
 };
 
 union memf_value {
@@ -58,21 +56,14 @@ struct memf_args {
 	unsigned long long	to;
 	char			mask[4];
 	bool			noalign;
-	bool			ranged;
 	enum memf_type		type;
 	enum memf_func		func;
 	union memf_value	value;
-	union memf_value	vfrom, vto;
 };
 
 struct memf_store {
 	unsigned long long	addr;
 	union memf_value	value;
-};
-
-struct memf_store_hdr {
-	size_t			count;
-	struct memf_store	stores[];
 };
 
 enum memf_status memf(const struct memf_args *args);
