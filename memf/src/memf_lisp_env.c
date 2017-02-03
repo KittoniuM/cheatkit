@@ -34,7 +34,7 @@ static lisp_result_t env_arith(const char *name,
 			goto fail;
 		}
 	}
-	for (size_t x = 0, i = (argn - 1); x < argn; x++, i--) {
+	for (size_t i = 0; i < argn; i++) {
 		int64_t sint;
 		double	flt;
 		if (res.type == TYPE_INT && args[i].type == TYPE_INT)
@@ -45,6 +45,19 @@ static lisp_result_t env_arith(const char *name,
 			sint = (int64_t) args[i].value.flt;
 		else if (res.type == TYPE_FLT && args[i].type == TYPE_INT)
 			flt = (double) args[i].value.sint;
+		/*
+		 * Hack that pushes first argument into res.value
+		 * without doing anything to it.
+		 */
+		if (i == 0) {
+			if (res.type == TYPE_INT)
+				res.value.sint = sint;
+			else if (res.type == TYPE_FLT)
+				res.value.flt = flt;
+			else
+				assert(0);
+			continue;
+		}
 		switch (res.type) {
 		case TYPE_INT:
 			switch (name[0]) {
@@ -117,8 +130,35 @@ fail:
 	return (lisp_result_t) {.type = TYPE_ILL};
 }
 
-const memf_lisp_env_t memf_lisp_fenv[] = {
+static lisp_result_t env_vieee754_special(const char *name)
+{
+	lisp_result_t res;
+	res.type = TYPE_FLT;
+	res.value.flt =
+		name[3] == '+' ? +1.0/0.0 :
+		name[3] == '-' ? -1.0/0.0 :
+		0.0/0.0;
+	return res;
+}
+
+static lisp_result_t env_vreadptr_native(const char *name)
+{
+}
+
+const memf_lisp_fenv_t memf_lisp_fenv[] = {
 	{"+", env_arith}, {"-", env_arith}, {"*", env_arith}, {"/", env_arith},
 	{"=",  env_test}, {"!=", env_test},
 	{0},
+};
+
+const memf_lisp_venv_t memf_lisp_venv[] = {
+	{"nan",  env_vieee754_special},
+	{"inf+", env_vieee754_special},
+	{"inf-", env_vieee754_special},
+	{"i8",   env_vreadptr_native},
+	{"i16",  env_vreadptr_native},
+	{"i32",  env_vreadptr_native},
+	{"i64",  env_vreadptr_native},
+	{"f32",  env_vreadptr_native},
+	{"f64",  env_vreadptr_native},
 };
