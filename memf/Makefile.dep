@@ -1,3 +1,2 @@
 main.o: src/main.c src/memf.h
 memf.o: src/memf.c src/memf.h
-memf_proc.o: src/memf_proc.c src/memf_proc.h

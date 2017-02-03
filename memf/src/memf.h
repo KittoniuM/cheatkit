@@ -1,42 +1,79 @@
 #ifndef __MEMF_H__
 #define __MEMF_H__
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 enum memf_status {
 	MEMF_OK,
+	MEMF_FOUND,
+	/*
+	 * Failure to open a file on procfs.  This usually indicates
+	 * that the process either non-existent or we don't have
+	 * privileges to touch it.
+	 */
 	MEMF_ERR_PROC,
+	/*
+	 * Internal IO error, usually caused by outdated maps.  Less
+	 * likely, this could mean that something's wrong in our own
+	 * code.
+	 */
 	MEMF_ERR_IO,
+	/* No more memory for malloc to give. */
+	MEMF_ERR_OOM,
 };
 
-/*
- * union memf_value {
- * 	int8_t		i8;
- * 	int16_t		i16;
- * 	int32_t		i32;
- * 	int64_t		i64;
- * 	uint8_t		u8;
- * 	uint16_t	u16;
- * 	uint32_t	u32;
- * 	uint64_t	u64;
- * 	float		f32;
- * 	double		f64;
- * };
- */
+enum memf_type {
+	TYPE_ILL = 0,
+	TYPE_I8,
+	TYPE_I16,
+	TYPE_I32,
+	TYPE_I64,
+	TYPE_F32,
+	TYPE_F64,
+};
+
+enum memf_func {
+	FUNC_ILL = 0,
+	FUNC_EQ,
+	FUNC_NE,
+	FUNC_LT,
+	FUNC_GT,
+	FUNC_LE,
+	FUNC_GE,
+	FUNC_IN,
+	FUNC_EX,
+};
+
+union memf_value {
+	long long	i;
+	double		f;
+};
 
 struct memf_args {
-	unsigned long	pid;
-	unsigned long	from;
-	unsigned long	to;
-	char		mask[3];
+	bool			verbose;
+	unsigned long		pid;
+	unsigned long long	from;
+	unsigned long long	to;
+	char			mask[4];
+	bool			noalign;
+	bool			ranged;
+	enum memf_type		type;
+	enum memf_func		func;
+	union memf_value	value;
+	union memf_value	vfrom, vto;
 };
 
-/*
- * struct memf_store {
- * 	uint64_t		address;
- * 	union memf_value	value;
- * };
- */
+struct memf_store {
+	unsigned long long	addr;
+	union memf_value	value;
+};
+
+struct memf_store_hdr {
+	size_t			count;
+	struct memf_store	stores[];
+};
 
 enum memf_status memf(const struct memf_args *args);
 
