@@ -7,7 +7,6 @@
 
 enum memf_status {
 	MEMF_OK,
-	MEMF_FOUND,
 	/*
 	 * Failure to open a file on procfs.  This usually indicates
 	 * that the process either non-existent or we don't have
@@ -45,20 +44,8 @@ enum memf_func {
 };
 
 union memf_value {
-	long long	i;
-	double		f;
-};
-
-struct memf_args {
-	bool			verbose;
-	unsigned long		pid;
-	unsigned long long	from;
-	unsigned long long	to;
-	char			mask[4];
-	bool			noalign;
-	enum memf_type		type;
-	enum memf_func		func;
-	union memf_value	value;
+	int64_t	i;
+	double	f;
 };
 
 struct memf_store {
@@ -66,6 +53,22 @@ struct memf_store {
 	union memf_value	value;
 };
 
-enum memf_status memf(const struct memf_args *args);
+struct memf_args {
+	bool			 verbose;
+	unsigned long		 pid;
+	unsigned long long	 from;
+	unsigned long long	 to;
+	char			 mask[4];
+	bool			 noalign;
+	enum memf_type		 type;
+	enum memf_func		 func;
+	union memf_value	 value;
+	size_t			 num_stores;
+	struct memf_store	*stores;
+};
+
+enum memf_status memf(const struct memf_args	 *args,
+		      struct memf_store		**out_stores,
+		      size_t			 *out_num_stores);
 
 #endif /* __MEMF_H__ */

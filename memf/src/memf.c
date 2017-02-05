@@ -22,7 +22,7 @@ struct map_e {
 	char			file[256];
 };
 
-static size_t type_align(enum memf_type type)
+static size_t typealign(enum memf_type type)
 {
 	switch (type) {
 	case TYPE_I8:
@@ -40,54 +40,56 @@ static size_t type_align(enum memf_type type)
 	}
 }
 
-static bool memf_test(const struct memf_args *args, void *ptr)
+static bool memf_test(enum memf_type type, enum memf_func func,
+		      void *ptr, union memf_value value, union memf_value *out)
 {
 	bool	is_int;
 	bool	is_flt;
 	int64_t i;
 	double	f;
 
-	switch (args->type) {
+	switch (type) {
 	case TYPE_I8:
 		is_int = true;
-		i = *(int8_t *)ptr  - (int8_t) args->value.i;
+		i = (out->i = *(int8_t *) ptr)  - (int8_t) value.i;
 		break;
 	case TYPE_I16:
 		is_int = true;
-		i = *(int16_t *)ptr - (int16_t) args->value.i;
+		i = (out->i = *(int16_t *) ptr) - (int16_t) value.i;
 		break;
 	case TYPE_I32:
 		is_int = true;
-		i = *(int32_t *)ptr - (int32_t) args->value.i;
+		i = (out->i = *(int32_t *) ptr) - (int32_t) value.i;
 		break;
 	case TYPE_I64:
 		is_int = true;
-		i = *(int64_t *)ptr - (int64_t) args->value.i;
+		i = (out->i = *(int64_t *) ptr) - (int64_t) value.i;
 		break;
 	case TYPE_F32:
 		is_flt = true;
-		f = *(float *)ptr   - (float) args->value.f;
+		f = (float) (out->f = *(float *) ptr)   - (float) value.f;
 		break;
 	case TYPE_F64:
 		is_flt = true;
-		f = *(double *)ptr  - (double) args->value.f;
+		f = (double) (out->f = *(double *) ptr) - (double) value.f;
 		break;
 	default:
 		assert(0);
 	}
-	switch (args->func) {
+	assert(is_int || is_flt);
+	switch (func) {
 	case FUNC_EQ:
 		return is_int ? i == 0
-			: args->type == TYPE_F32 ? f < (double) DBL_EPSILON
-			: args->type == TYPE_F64 ? f < DBL_EPSILON
+			: type == TYPE_F32 ? f < (double) FLT_EPSILON
+			: type == TYPE_F64 ? f < DBL_EPSILON
 			: false;
 	case FUNC_NE:
 		return is_int ? i != 0
-			: args->type == TYPE_F32 ? f >= (double) DBL_EPSILON
-			: args->type == TYPE_F64 ? f >= DBL_EPSILON
+			: type == TYPE_F32 ? f >= (double) FLT_EPSILON
+			: type == TYPE_F64 ? f >= DBL_EPSILON
 			: false;
-	case FUNC_LT: return is_int ? i < 0 : is_flt ? f < 0.0 : false;
-	case FUNC_GT: return is_int ? i > 0 : is_flt ? f > 0.0 : false;
+	case FUNC_LT: return is_int ? i < 0  : is_flt ? f < 0.0  : false;
+	case FUNC_GT: return is_int ? i > 0  : is_flt ? f > 0.0  : false;
 	case FUNC_LE: return is_int ? i <= 0 : is_flt ? f <= 0.0 : false;
 	case FUNC_GE: return is_int ? i >= 0 : is_flt ? f >= 0.0 : false;
 	default:
@@ -97,16 +99,15 @@ static bool memf_test(const struct memf_args *args, void *ptr)
 
 static bool memf_maskmap(const struct map_e *map, const char mask[4])
 {
-	for (size_t i = 0; i < 4; i++) {
+	for (size_t i = 0; i < 4; i++)
 		if (mask[i] != '?' && map->perms[i] != mask[i])
 			return false;
-	}
 	return true;
 }
 
 static enum memf_status memf_maps(const struct memf_args *args,
 				  struct map_e	**out_maps,
-				  size_t	 *out_mapsn)
+				  size_t	 *out_num_maps)
 {
 	char		 smaps[32];
 	FILE		*mapsf;
@@ -121,7 +122,7 @@ static enum memf_status memf_maps(const struct memf_args *args,
 	/* this is an expected error -- we might lack permissions */
 	if ((mapsf = fopen(smaps, "r")) == NULL)
 		return MEMF_ERR_PROC;
-	cur = 0;
+	cur  = 0;
 	maps = NULL;
 	while (getline(&line, &len, mapsf) != -1) {
 		struct map_e	*map;
@@ -140,21 +141,24 @@ static enum memf_status memf_maps(const struct memf_args *args,
 		map->has_file = c >= 8;
 		cur++;
 	}
+	if ((*out_num_maps = cur) > 0)
+		*out_maps = maps;
 	free(line);
 	fclose(mapsf);
-	*out_mapsn = cur;
-	*out_maps = maps;
 	return MEMF_OK;
 }
 
 enum memf_status memf_lookmap(const struct memf_args	 *args,
 			      const struct map_e	 *map,
 			      struct memf_store		**out_stores,
-			      size_t			 *out_storesn)
+			      size_t			 *out_num_stores)
 {
 	char			 smem[32];
 	void			*buf;
 	FILE			*memf;
+	union memf_value	 val;
+	size_t			 cur;
+	struct memf_store	*stores;
 	enum memf_status	 rc;
 
 	/* snprintf should not run out of buffer space */
@@ -181,12 +185,42 @@ enum memf_status memf_lookmap(const struct memf_args	 *args,
 		goto fail_io;
 	}
 
-	const size_t s = args->noalign ? 1 : type_align(args->type);
-	for (size_t o = 0; o < (size_t) (map->to - map->from); o += s) {
-		if (memf_test(args, (void *) ((uintptr_t) buf + o))) {
-			printf("%llx\n", map->from + (unsigned long long) o);
+	cur    = 0;
+	stores = NULL;
+	if (args->num_stores == 0) {
+		for (size_t o = 0, s = args->noalign ? 1 : typealign(args->type);
+		     o < (size_t) (map->to - map->from);
+		     o += s) {
+			if (memf_test(args->type, args->func,
+				      (char *) buf + o, args->value, &val)) {
+				stores = realloc(stores,
+						 (cur + 1) * sizeof(*stores));
+				stores[cur].addr  = (unsigned long long) o;
+				stores[cur].value = val;
+				cur++;
+			}
+		}
+	} else {
+		for (size_t i = 0; i < args->num_stores; i++) {
+			/* must be within map range */
+			if (args->stores[i].addr < map->from ||
+			    args->stores[i].addr >= map->to)
+				continue;
+			if (memf_test(args->type, args->func,
+				      (char *) buf
+				      + (intptr_t) (args->stores[i].addr
+						    - map->from),
+				      args->stores[i].value, &val)) {
+				stores = realloc(stores,
+						 (cur + 1) * sizeof(*stores));
+				stores[cur].addr  = args->stores[i].addr;
+				stores[cur].value = val;
+				cur++;
+			}
 		}
 	}
+	if ((*out_num_stores = cur) > 0)
+		*out_stores = stores;
 	rc = MEMF_OK;
 fail_io:
 	free(buf);
@@ -196,30 +230,62 @@ fail_fopen:
 	return rc;
 }
 
-enum memf_status memf(const struct memf_args *args)
+enum memf_status memf(const struct memf_args	 *args,
+		      struct memf_store		**out_stores,
+		      size_t			 *out_num_stores)
 {
-	size_t			 mapsn;
+	size_t			 num_maps;
 	struct map_e		*maps;
-	enum memf_status	 rc;
+	size_t			 num_stores;
+	struct memf_store	*stores;
+	enum memf_status	 rc, lrc;
 
-	if ((rc = memf_maps(args, &maps, &mapsn)) != MEMF_OK)
+	/* this also does pid check for us */
+	if ((rc = memf_maps(args, &maps, &num_maps)) != MEMF_OK)
 		return rc;
-	for (size_t i = 0; i < mapsn; i++) {
+	num_stores = 0;
+	stores	   = NULL;
+	for (size_t i = 0; i < num_maps; i++) {
 		struct map_e *map = &maps[i];
 
+		size_t			 lo_num_stores;
+		struct memf_store	*lo_stores;
+
+		/* map must lie at the range at least partly */
+		if ((map->from < args->from && map->to < args->from) ||
+		    (map->from > args->to   && map->to > args->to))
+			continue;
+		/* map's permissions must match mask */
 		if (!memf_maskmap(map, args->mask))
 			continue;
-		if (memf_lookmap(args, map, NULL, NULL) == MEMF_OK)
+		if ((lrc = memf_lookmap(args, map, &lo_stores, &lo_num_stores))
+		    == MEMF_OK) {
+			if (lo_num_stores == 0)
+				continue;
+			stores = realloc(stores, ((num_stores + lo_num_stores)
+						  * sizeof(*stores)));
+			memcpy(&stores[num_stores],
+			       lo_stores, lo_num_stores * sizeof(*stores));
+			free(lo_stores);
+			num_stores += lo_num_stores;
+		} else {
 			if (args->verbose) {
-				printf("memf: failed map: "
+				printf("memf: failed map(%d): "
 				       "%zu %s %016llx-%016llx %s\n",
+				       (int) lrc,
 				       i,
 				       maps[i].perms,
-				       maps[i].from,
-				       maps[i].to,
+				       maps[i].from, maps[i].to,
 				       maps[i].has_file ? maps[i].file : "");
+				/*
+				 * Otherwise just queitly ignore
+				 * failed lookmap call.
+				 */
 			}
+		}
 	}
+	if ((*out_num_stores = num_stores) > 0)
+		*out_stores = stores;
 	free(maps);
 	return MEMF_OK;
 }
