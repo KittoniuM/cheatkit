@@ -10,10 +10,28 @@
 #include "memf.h"
 
 static const char usage[] =
-	"Usage: memf [options] <filter file>\n"
+	"Usage: memf [options] <intermediate blob>\n"
 	"Options:\n"
 	"  -h, --help                  Show this message.\n"
-	"  -p, --pid PID               Process ID to work at, in base 10.\n";
+	"  -V, --verbose               Talk more.\n"
+	"  -p, --pid PID               Process ID to work at, in base 10.\n"
+	"  -r, --range FROM..TO        Range to consider pages from.  Must be in\n"
+	"                              base 16 with NO 0x prefix.  Default is\n"
+	"                              0..7fffffffffffffff .\n"
+	"  -m, --mask ....             Flags mask for pages.  Default is r?-p ,\n"
+	"                              which will match any readable, non-executable\n"
+	"                              private page.\n"
+	"  -f, --func EXPR             Defines what to look for.  Must be written as\n"
+	"                              FUNC or FUNC,TYPE,VALUE .\n"
+	"                              Valid FUNCs are: = != < > <= >= .\n"
+	"                              Valid TYPEs are: i8, i16, i32, i64, f32, f64\n"
+	"                              VALUE may be written in base 10 or base 16.\n"
+	"\n"
+	"If intermediate blob is provided, --range and --mask will have no effect,\n"
+	"and --func is only required to provide FUNC.  TYPE and VALUE are provided\n"
+	"by the intermediate blob itself and are ignored in --func.\n";
+
+
 
 static enum memf_type to_type(const char *str)
 {
@@ -76,7 +94,10 @@ static void from_f(struct memf_args *args, const char *str)
 	int	c;
 
 	if ((c = sscanf(str, "%32[^,],%32[^,],%32[^-]",
-			type_str, func_str, value_str)) >= 3) {
+			func_str, type_str, value_str)) >= 1) {
+		args->func = to_func(func_str);
+		if (c == 1)
+			return;
 		if (type_str[0] == '^') {
 			args->noalign = true;
 			args->type = to_type(&type_str[1]);
@@ -84,7 +105,6 @@ static void from_f(struct memf_args *args, const char *str)
 			args->noalign = false;
 			args->type = to_type(type_str);
 		}
-		args->func = to_func(func_str);
 		if (args->type == TYPE_ILL || args->func == FUNC_ILL) {
 			args->type = TYPE_ILL;
 			args->func = FUNC_ILL;
@@ -112,6 +132,14 @@ static int look(struct memf_args *args, int argc, char **argv)
 		args->stores = malloc(args->num_stores * sizeof(*args->stores));
 		fread(args->stores, sizeof(*args->stores), args->num_stores, in);
 		fclose(in);
+	}
+	if (args->num_stores == 0 && args->from >= args->to) {
+		fprintf(stderr, "memf: error: bad range\n");
+		return EXIT_FAILURE;
+	}
+	if (args->type == TYPE_ILL || args->func == FUNC_ILL) {
+		fprintf(stderr, "memf: error: illegal type, function or value\n");
+		return EXIT_FAILURE;
 	}
 	switch (rc = memf(args, &stores, &num_stores)) {
 	case MEMF_OK:
@@ -144,7 +172,7 @@ static int look(struct memf_args *args, int argc, char **argv)
 int main(int argc, char **argv)
 {
 	const struct option long_options[] = {
-		{"help",    no_argument,       NULL, '\0'},
+		{"help",    no_argument,       NULL, 'h'},
 		{"verbose", no_argument,       NULL, 'V'},
 		{"pid",     required_argument, NULL, 'p'},
 		{"range",   required_argument, NULL, 'r'},
@@ -197,14 +225,6 @@ int main(int argc, char **argv)
 
 	if (args.pid == 0) {
 		fprintf(stderr, "memf: error: pid is not set\n");
-		return EXIT_FAILURE;
-	}
-	if (args.from >= args.to) {
-		fprintf(stderr, "memf: error: bad range\n");
-		return EXIT_FAILURE;
-	}
-	if (args.type == TYPE_ILL || args.func == FUNC_ILL) {
-		fprintf(stderr, "memf: error: illegal type, function or value\n");
 		return EXIT_FAILURE;
 	}
 	if (optind != (argc - 1)) {
