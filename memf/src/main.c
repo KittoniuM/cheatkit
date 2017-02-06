@@ -1,3 +1,5 @@
+#include <assert.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,140 +7,241 @@
 
 #include <getopt.h>
 
-#include <sys/mman.h>
-
 #include "memf.h"
-#include "lisp.h"
 
 static const char usage[] =
-	"Usage: memf [options] <filter file>\n"
+	"Usage: memf [options] <intermediate blob>\n"
 	"Options:\n"
 	"  -h, --help                  Show this message.\n"
-	"  -p, --pid PID               Process ID to work at.\n"
-	"  -r, --range RANGE           Memf range.  Defined as from..to.  Ranges have\n"
-	"                              two aliases:\n"
-	"                                32 for 0..ffffffff;\n"
-	"                                64 for 0..7fffffffffffffff.  Default is 64.\n"
-	"  -c, --func                  Test function.  Must be written in a LISP-like\n"
-	"                              language.  Symbols are presented in a table\n"
-	"                              below.\n"
-	"LISP symbols:\n"
-	"  pi                          Pi constant.\n"
-	"  nan,inf+,inf-               IEEE 754 special floating point non-numeric\n"
-	"                              values.\n"
-	"  (+,* ...)                   Sum, product.\n"
-	"  (-,/ a b)                   Difference and division.\n"
+	"  -V, --verbose               Talk more.\n"
+	"  -p, --pid PID               Process ID to work at, in base 10.\n"
+	"  -r, --range FROM..TO        Range to consider pages from.  Must be in\n"
+	"                              base 16 with NO 0x prefix.  Default is\n"
+	"                              0..7fffffffffffffff .\n"
+	"  -m, --mask ....             Flags mask for pages.  Default is r?-p ,\n"
+	"                              which will match any readable, non-executable\n"
+	"                              private page.\n"
+	"  -f, --func EXPR             Defines what to look for.  Must be written as\n"
+	"                              FUNC or FUNC,TYPE,VALUE .\n"
+	"                              Valid FUNCs are: = != < > <= >= .\n"
+	"                              Valid TYPEs are: i8, i16, i32, i64, f32, f64\n"
+	"                              VALUE may be written in base 10 or base 16.\n"
 	"\n"
-	"  (trunc a)                   Strip fraction part.\n"
-	"  (floor a)                   Round down.\n"
-	"  (round a)                   Round to nearest.\n"
-	"  (ceil a)                    Round up.\n"
-	"NOTE: These will fail with non-integers:\n"
-	"  (~ a)                       Bitwise not.\n"
-	"  (&,|,^ a b)                 Bitwise and, or and xor of two integers.\n"
-	"\n"
-	"  (=,!= a ...)                Test at least two numbers for equality.\n"
-	"  (f=,f!= a ...)              Test at least two numbers for equality, with\n"
-	"                              floating inaccuracy point tolerance.\n"
-	"  (<,>,<=,>= a b)             Compare two numbers.\n"
-	"  (! a)                       Logical not.\n"
-	"  (&&,|| a b)                 Logical and and or.\n"
-	"\n"
-	"  (sig signature [mask])      Check if address points to matching region\n"
-	"\n"
-	"  previous                    Value stored from previous scan.\n"
-	"  i8, u8                      Single byte from current address\n"
-	"  [i,u][16,32,64][le,be]      Word from current address, endian-independent\n"
-	"  [i,u][16,32,64]             Word from current address, -le or -be depending\n"
-	"                              on platform's endianness.\n"
-	"  f[32,64][le,be, ]           Single or double precision floating point\n"
-	"                              number from current address.\n"
-	;
+	"If intermediate blob is provided, --range and --mask will have no effect,\n"
+	"and --func is only required to provide FUNC.  TYPE and VALUE are provided\n"
+	"by the intermediate blob itself and TYPE is then ignored in --func.  If\n"
+	"You wish to ignore TYPE's alignment and go byte-by-byte, put ^ at start of\n"
+	"--func.\n";
+
+
+static enum memf_type to_type(const char *str)
+{
+	struct typealias { const char *a; enum memf_type t; } aliases[] = {
+		{"ill", TYPE_ILL},
+		{"i8",  TYPE_I8},
+		{"i16", TYPE_I16},
+		{"i32", TYPE_I32},
+		{"i64", TYPE_I64},
+		{"f32", TYPE_F32},
+		{"f64", TYPE_F64},
+	};
+
+	for (size_t i = 0; i < sizeof(aliases) / sizeof(*aliases); i++) {
+		if (strcmp(aliases[i].a, str) == 0)
+			return aliases[i].t;
+	}
+	return TYPE_ILL;
+}
+
+static enum memf_func to_func(const char *str)
+{
+	struct funcalias { const char *a; enum memf_func f; } aliases[] = {
+		{"=",  FUNC_EQ},
+		{"!=", FUNC_NE},
+		{"<",  FUNC_LT},
+		{">",  FUNC_GT},
+		{"<=", FUNC_LE},
+		{">=", FUNC_GE},
+	};
+	for (size_t i = 0; i < sizeof(aliases) / sizeof(*aliases); i++) {
+		if (strcmp(aliases[i].a, str) == 0)
+			return aliases[i].f;
+	}
+	return FUNC_ILL;
+}
+
+static union memf_value to_value(enum memf_type type, const char *str)
+{
+	switch (type) {
+	case TYPE_I8:
+	case TYPE_I16:
+	case TYPE_I32:
+	case TYPE_I64:
+		return (union memf_value) {
+			.i = str[0] == '0' && (str[1] == 'x' || str[1] == 'X')
+				? strtoll(&str[2], NULL, 16)
+				: strtoll(str,     NULL, 10)};
+	case TYPE_F32:
+	case TYPE_F64:
+		return (union memf_value) {.f = strtod(str, NULL)};
+	default:
+		assert(0);
+	}
+}
+
+static void from_f(struct memf_args *args, const char *str)
+{
+	char	type_str[32], func_str[32], value_str[32];
+	int	c;
+
+	if ((c = sscanf(str, "%32[^,],%32[^,],%32[^-]",
+			func_str, type_str, value_str)) >= 1) {
+		args->func = to_func(func_str);
+		if (c == 1)
+			return;
+		if (type_str[0] == '^') {
+			args->noalign = true;
+			args->type = to_type(&type_str[1]);
+		} else {
+			args->noalign = false;
+			args->type = to_type(type_str);
+		}
+		if (args->type == TYPE_ILL || args->func == FUNC_ILL) {
+			args->type = TYPE_ILL;
+			args->func = FUNC_ILL;
+		} else {
+			args->value = to_value(args->type, value_str);
+			args->usevalue = true;
+		}
+	} else {
+		args->type = TYPE_ILL;
+		args->func = FUNC_ILL;
+	}
+}
 
 int main(int argc, char **argv)
 {
-	static struct option long_options[] = {
-		{"help",  no_argument,       NULL, 'h'},
-		{"pid",   required_argument, NULL, 'p'},
-		{"range", required_argument, NULL, 'r'},
-		{"func",  required_argument, NULL, 'c'},
+	const struct option long_options[] = {
+		{"help",    no_argument,       NULL, 'h'},
+		{"verbose", no_argument,       NULL, 'V'},
+		{"pid",     required_argument, NULL, 'p'},
+		{"range",   required_argument, NULL, 'r'},
+		{"mask",    required_argument, NULL, 'm'},
+		{"func",    required_argument, NULL, 'f'},
 		{0}
 	};
+	struct memf_args args = {
+		.verbose    = false,
+		.pid	    = 0,
+		.from	    = 0,
+		.to	    = 0x7fffffffffffffff,
+		.mask	    = "r?-p",
+		.noalign    = false,
+		.usevalue   = false,
+		.type	    = TYPE_ILL,
+		.func	    = FUNC_ILL,
+		.value	    = {0},
+		.num_stores = 0,
+		.stores	    = NULL,
+	};
+	FILE *in, *out;
+	size_t num_stores;
+	struct memf_store *stores;
 	int c, option_index;
-	while ((c = getopt_long(argc, argv, "hp:r:c:",
+
+	while ((c = getopt_long(argc, argv, "hVp:r:m:f:",
 				long_options, &option_index)) != -1) {
 		switch (c) {
 		case 'h':
 			printf(usage);
 			return EXIT_SUCCESS;
-
+		case 'V':
+			args.verbose = true;
+			break;
 		case 'p':
+			sscanf(optarg, "%lu", &args.pid);
 			break;
-
 		case 'r':
-			/* sscanf(optarg, "%llx-%llx", &from, &to); */
+			sscanf(optarg, "%llx-%llx", &args.from, &args.to);
 			break;
-
-		case 'c':
+		case 'm':
+			sscanf(optarg, "%4s", args.mask);
 			break;
-		}
-	}
-
-	/*
-	 * if (args.pid == 0) {
-	 * 	fprintf(stderr, "memf: error: pid is not set\n");
-	 * 	return EXIT_FAILURE;
-	 * } else if (args.type == TYPE_INVALID) {
-	 * 	fprintf(stderr, "memf: error: bad type\n");
-	 * 	return EXIT_FAILURE;
-	 * } else if (args.func == FUNC_INVALID) {
-	 * 	fprintf(stderr, "memf: error: bad function\n");
-	 * 	return EXIT_FAILURE;
-	 * } else if (args.to <= args.from) {
-	 * 	fprintf(stderr, "memf: error: bad range\n");
-	 * 	return EXIT_FAILURE;
-	 * }
-	 */
-
-	lisp_program_t prog;
-	lisp_ldprog(&prog, "(= u32 ()");
-	size_t col;
-	switch (lisp_synv(&prog, &col)) {
-	case SYNV_ILLTOKEN:
-		printf("memf: error: bad token at %d\n", col);
-		break;
-	case SYNV_BRACKET:
-		printf("memf: error: unmatched bracket at %d\n", col);
-		break;
-	}
-	for (size_t i = 0; i < prog.num_tokens; i++) {
-		lisp_token_t *tok = &prog.tokens[i];
-		switch (tok->type) {
-		case TOK_BEG:
-			printf("(\n");
+		case 'f':
+			from_f(&args, optarg);
 			break;
-		case TOK_END:
-			printf(")\n");
-			break;
-		case TOK_SYM:
-			printf("sym %s\n", tok->value.str);
-			break;
-		case TOK_FLT:
-			printf("flt %f\n", tok->value.flt);
-			break;
-		case TOK_INT:
-			printf("int %d\n", (int) tok->value.sint);
-			break;
-		case TOK_STR:
-			printf("str %s\n", tok->value.str);
-			break;
+		case '?':
+			goto fail;
 		default:
-			printf("??\n");
-			break;
+			assert(0);
 		}
 	}
-	lisp_free(&prog);
 
-	/* enum memf_status rc = memf(&args); */
-	return EXIT_SUCCESS;
+	if (args.pid == 0) {
+		fprintf(stderr, "memf: error: pid is not set\n");
+		goto fail;
+	}
+	if (optind != (argc - 1)) {
+		fprintf(stderr, "memf: error: where to output?\n");
+		goto fail;
+	}
+	if ((in = fopen(argv[argc-1], "rb")) != NULL) {
+		fread(&args.type,       sizeof(args.type),       1, in);
+		fread(&args.num_stores, sizeof(args.num_stores), 1, in);
+		if (args.num_stores == 0) {
+			fprintf(stderr, "memf: error: corrupted blob\n");
+			fclose(in);
+			goto fail;
+		}
+		if ((args.stores = malloc(args.num_stores
+					  * sizeof(*args.stores))) == NULL) {
+			fprintf(stderr, "memf: error: no memory to load blob\n");
+			fclose(in);
+			goto fail;
+		}
+		if (fread(args.stores, sizeof(*args.stores),
+			  args.num_stores, in) != args.num_stores) {
+			if (args.verbose)
+				printf("memf: blob could be corrupt\n");
+		}
+		fclose(in);
+	}
+	if (args.func == FUNC_ILL) {
+		fprintf(stderr, "memf: error: illegal function\n");
+		goto fail;
+	}
+	if (args.type == TYPE_ILL) {
+		fprintf(stderr, "memf: error: illegal type\n");
+		goto fail;
+	}
+
+	switch (memf(&args, &stores, &num_stores)) {
+	case MEMF_OK:
+		break;
+	case MEMF_ERR_PROC:
+		fprintf(stderr, "memf: error: pid does not exist or permission denied\n");
+		goto fail;
+	case MEMF_ERR_IO:
+	case MEMF_ERR_OOM:
+	default:
+		/* these should never happen */
+		assert(0);
+	}
+
+	if ((out = fopen(argv[argc-1], "wb")) != NULL) {
+		fwrite(&args.type, sizeof(args.type), 1, out);
+		fwrite(&num_stores, sizeof(num_stores), 1, out);
+		fwrite(stores, sizeof(*stores), num_stores, out);
+		fclose(out);
+	} else {
+		fprintf(stderr, "memf: error: failed to write %s\n", argv[argc-1]);
+		goto fail_post_memf;
+	}
+fail_post_memf:
+	if (num_stores > 0)
+		free(stores);
+fail:
+	if (args.num_stores > 0)
+		free(args.stores);
+	return 0;
 }
