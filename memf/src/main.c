@@ -110,6 +110,7 @@ static void from_f(struct memf_args *args, const char *str)
 			args->func = FUNC_ILL;
 		} else {
 			args->value = to_value(args->type, value_str);
+			args->usevalue = true;
 		}
 	} else {
 		args->type = TYPE_ILL;
@@ -135,6 +136,7 @@ int main(int argc, char **argv)
 		.to	    = 0x7fffffffffffffff,
 		.mask	    = "r?-p",
 		.noalign    = false,
+		.usevalue   = false,
 		.type	    = TYPE_ILL,
 		.func	    = FUNC_ILL,
 		.value	    = {0},

@@ -209,7 +209,9 @@ enum memf_status memf_lookmap(const struct memf_args	 *args,
 			if (memf_test(args->type, args->func,
 				      (char *) buf
 				      + (args->stores[i].addr - map->from),
-				      args->stores[i].value, &val)) {
+				      args->usevalue
+				      ? args->value
+				      : args->stores[i].value, &val)) {
 				stores = realloc(stores,
 						 (cur + 1) * sizeof(*stores));
 				stores[cur].addr  = args->stores[i].addr;

@@ -60,6 +60,7 @@ struct memf_args {
 	unsigned long long	 to;
 	char			 mask[4];
 	bool			 noalign;
+	bool			 usevalue;
 	enum memf_type		 type;
 	enum memf_func		 func;
 	union memf_value	 value;
