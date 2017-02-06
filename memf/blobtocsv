@@ -5,21 +5,26 @@ from sys import argv, stdout, stderr, exit
 TYPES = {1: "i8", 2: "i16", 3: "i32", 4: "i64", 5: "f32", 6: "f64"}
 
 def main():
-    with open(argv[1], "rb") as f:
-        raw_type = f.read(4)
-        raw_num_stores = f.read(8)
-        type = TYPES.get(unpack("<i", raw_type)[0])
-        is_int = type in ("i8", "i16", "i32", "i64")
-        is_flt = type in ("f32", "f64")
-        assert is_int or is_flt
-        if type is None:
-            stderr.write("blobtocsv: error: bad type")
-        num_stores = unpack("N", raw_num_stores)[0]
-        for _ in range(num_stores):
-            raw_addr  = f.read(8)
-            raw_value = f.read(8)
-            addr  = unpack("<Q", raw_addr)[0]
-            value = unpack("<Q" if is_int else "<d", raw_value)[0]
-            stdout.write("{:016x},{},{}\n".format(addr, type, value))
+    try:
+        with open(argv[1], "rb") as f:
+            raw_type = f.read(4)
+            raw_num_stores = f.read(8)
+            type = TYPES.get(unpack("<i", raw_type)[0])
+            is_int = type in ("i8", "i16", "i32", "i64")
+            is_flt = type in ("f32", "f64")
+            assert is_int or is_flt
+            if type is None:
+                stderr.write("blobtocsv: error: bad type\n")
+                exit(1)
+            num_stores = unpack("N", raw_num_stores)[0]
+            for _ in range(num_stores):
+                raw_addr  = f.read(8)
+                raw_value = f.read(8)
+                addr  = unpack("<Q", raw_addr)[0]
+                value = unpack("<Q" if is_int else "<d", raw_value)[0]
+                stdout.write("{:016x},{},{}\n".format(addr, type, value))
+    except IOError as e:
+        stderr.write("blobtocsv: error: failed to open file\n")
+        exit(1)
 
 main()
