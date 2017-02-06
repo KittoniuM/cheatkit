@@ -117,58 +117,6 @@ static void from_f(struct memf_args *args, const char *str)
 	}
 }
 
-static int look(struct memf_args *args, int argc, char **argv)
-{
-	char			*sblob = argv[argc - 1];
-	FILE			*in, *out;
-	size_t			 num_stores;
-	struct memf_store	*stores;
-	enum memf_status	 rc;
-
-	/* TODO: Cleanup */
-	if ((in = fopen(sblob, "rb")) != NULL) {
-		fread(&args->type, sizeof(args->type), 1, in);
-		fread(&args->num_stores, sizeof(args->num_stores), 1, in);
-		args->stores = malloc(args->num_stores * sizeof(*args->stores));
-		fread(args->stores, sizeof(*args->stores), args->num_stores, in);
-		fclose(in);
-	}
-	if (args->num_stores == 0 && args->from >= args->to) {
-		fprintf(stderr, "memf: error: bad range\n");
-		return EXIT_FAILURE;
-	}
-	if (args->type == TYPE_ILL || args->func == FUNC_ILL) {
-		fprintf(stderr, "memf: error: illegal type, function or value\n");
-		return EXIT_FAILURE;
-	}
-	switch (rc = memf(args, &stores, &num_stores)) {
-	case MEMF_OK:
-		break;
-	case MEMF_ERR_PROC:
-		fprintf(stderr, "memf: error: pid does not exist or permission denied\n");
-		return EXIT_FAILURE;
-	case MEMF_ERR_IO:
-	case MEMF_ERR_OOM:
-	default:
-		assert(0);
-	}
-	free(args->stores);
-	if (num_stores != 0) {
-		if ((out = fopen(sblob, "wb")) == NULL) {
-			free(stores);
-			fprintf(stderr, "memf: error: failed to open %s for write\n",
-				sblob);
-			return EXIT_FAILURE;
-		}
-		fwrite(&args->type, sizeof(args->type), 1, out);
-		fwrite(&num_stores, sizeof(num_stores), 1, out);
-		fwrite(stores, sizeof(*stores), num_stores, out);
-		fclose(out);
-		free(stores);
-	}
-	return EXIT_SUCCESS;
-}
-
 int main(int argc, char **argv)
 {
 	const struct option long_options[] = {
@@ -193,6 +141,9 @@ int main(int argc, char **argv)
 		.num_stores = 0,
 		.stores	    = NULL,
 	};
+	FILE *in, *out;
+	size_t num_stores;
+	struct memf_store *stores;
 	int c, option_index;
 
 	while ((c = getopt_long(argc, argv, "hVp:r:m:f:",
@@ -217,7 +168,7 @@ int main(int argc, char **argv)
 			from_f(&args, optarg);
 			break;
 		case '?':
-			return EXIT_FAILURE;
+			goto fail;
 		default:
 			assert(0);
 		}
@@ -225,11 +176,69 @@ int main(int argc, char **argv)
 
 	if (args.pid == 0) {
 		fprintf(stderr, "memf: error: pid is not set\n");
-		return EXIT_FAILURE;
+		goto fail;
 	}
 	if (optind != (argc - 1)) {
 		fprintf(stderr, "memf: error: where to output?\n");
-		return EXIT_FAILURE;
+		goto fail;
 	}
-	return look(&args, argc, argv);
+	if ((in = fopen(argv[argc-1], "rb")) != NULL) {
+		fread(&args.type,       sizeof(args.type),       1, in);
+		fread(&args.num_stores, sizeof(args.num_stores), 1, in);
+		if (args.num_stores == 0) {
+			fprintf(stderr, "memf: error: corrupted blob\n");
+			fclose(in);
+			goto fail;
+		}
+		if ((args.stores = malloc(args.num_stores
+					  * sizeof(*args.stores))) == NULL) {
+			fprintf(stderr, "memf: error: no memory to load blob\n");
+			fclose(in);
+			goto fail;
+		}
+		if (fread(args.stores, sizeof(*args.stores),
+			  args.num_stores, in) != args.num_stores) {
+			if (args.verbose)
+				printf("memf: blob could be corrupt\n");
+		}
+		fclose(in);
+	}
+	if (args.func == FUNC_ILL) {
+		fprintf(stderr, "memf: error: illegal function\n");
+		goto fail;
+	}
+	if (args.type == TYPE_ILL) {
+		fprintf(stderr, "memf: error: illegal type\n");
+		goto fail;
+	}
+
+	switch (memf(&args, &stores, &num_stores)) {
+	case MEMF_OK:
+		break;
+	case MEMF_ERR_PROC:
+		fprintf(stderr, "memf: error: pid does not exist or permission denied\n");
+		goto fail;
+	case MEMF_ERR_IO:
+	case MEMF_ERR_OOM:
+	default:
+		/* these should never happen */
+		assert(0);
+	}
+
+	if ((out = fopen(argv[argc-1], "wb")) != NULL) {
+		fwrite(&args.type, sizeof(args.type), 1, out);
+		fwrite(&num_stores, sizeof(num_stores), 1, out);
+		fwrite(stores, sizeof(*stores), num_stores, out);
+		fclose(out);
+	} else {
+		fprintf(stderr, "memf: error: failed to write %s\n", argv[argc-1]);
+		goto fail_post_memf;
+	}
+fail_post_memf:
+	if (num_stores > 0)
+		free(stores);
+fail:
+	if (args.num_stores > 0)
+		free(args.stores);
+	return 0;
 }
