@@ -129,7 +129,6 @@ static enum memf_status memf_maps(const struct memf_args *args,
 		int		 c;
 
 		maps = realloc(maps, (cur + 1) * sizeof(*maps));
-		assert(maps);
 		map = &maps[cur];
 		c = sscanf(line, "%llx-%llx %4s %llx %x:%x %llu %256s",
 			   &map->from, &map->to, map->perms, &map->off,
@@ -195,7 +194,8 @@ enum memf_status memf_lookmap(const struct memf_args	 *args,
 				      (char *) buf + o, args->value, &val)) {
 				stores = realloc(stores,
 						 (cur + 1) * sizeof(*stores));
-				stores[cur].addr  = (unsigned long long) o;
+				stores[cur].addr  = map->from
+					+ (unsigned long long) o;
 				stores[cur].value = val;
 				cur++;
 			}
@@ -208,8 +208,7 @@ enum memf_status memf_lookmap(const struct memf_args	 *args,
 				continue;
 			if (memf_test(args->type, args->func,
 				      (char *) buf
-				      + (intptr_t) (args->stores[i].addr
-						    - map->from),
+				      + (args->stores[i].addr - map->from),
 				      args->stores[i].value, &val)) {
 				stores = realloc(stores,
 						 (cur + 1) * sizeof(*stores));
