@@ -29,8 +29,9 @@ static const char usage[] =
 	"\n"
 	"If intermediate blob is provided, --range and --mask will have no effect,\n"
 	"and --func is only required to provide FUNC.  TYPE and VALUE are provided\n"
-	"by the intermediate blob itself and are ignored in --func.\n";
-
+	"by the intermediate blob itself and TYPE is then ignored in --func.  If\n"
+	"You wish to ignore TYPE's alignment and go byte-by-byte, put ^ at start of\n"
+	"--func.\n";
 
 
 static enum memf_type to_type(const char *str)
