@@ -1,0 +1,33 @@
+#!/usr/bin/python3
+from struct import pack, unpack
+from sys import argv, stdout, stderr, exit
+
+def main():
+    try:
+        auto_type = None
+        stores = []
+        for f in [open(x, "rb") for x in argv[1:-1]]:
+            raw_type = f.read(4)
+            raw_num_stores = f.read(8)
+            if auto_type is None:
+                auto_type = raw_type
+            if auto_type != raw_type:
+                stderr.write("blobmerge: error: all files must have same type\n")
+                exit(1)
+            num_stores = unpack("<Q", raw_num_stores)[0]
+            for _ in range(num_stores):
+                raw_addr  = f.read(8)
+                raw_value = f.read(8)
+                stores.append((raw_addr, raw_value))
+            f.close()
+        with open(argv[-1], "wb") as o:
+            o.write(auto_type)
+            o.write(pack("<Q", len(stores)))
+            for (addr, value) in stores:
+                o.write(addr)
+                o.write(value)
+    except IOError as e:
+        stderr.write("blobmerge: error: failed to open file\n")
+        exit(1)
+
+main()
