@@ -1,0 +1,112 @@
+.\" Copyright (C) 2017 Constantine "fst3a" ...
+.\"
+.\" %%%LICENSE_START(VERBATIM)
+.\" Permission is granted to make and distribute verbatim copies of this
+.\" manual provided the copyright notice and this permission notice are
+.\" preserved on all copies.
+.\"
+.\" Permission is granted to copy and distribute modified versions of this
+.\" manual under the conditions for verbatim copying, provided that the
+.\" entire resulting derived work is distributed under the terms of a
+.\" permission notice identical to this one.
+.\"
+.\" The author(s) assume no responsibility for errors or omissions, or for
+.\" damages resulting from the use of the information contained herein.
+.\" The author(s) may not have taken the same level of care in the
+.\" production of this manual, which is licensed free of charge, as they
+.\" might when working professionally.
+.\"
+.\" Formatted or processed versions of this manual, if unaccompanied by
+.\" the source, must acknowledge the copyright and authors of this work.
+.\" %%%LICENSE_END
+.TH CHEATKIT 1 2017-02-08 "CheatKit" "CheatKit's User Manual"
+.SH NAME
+cheatkit \- A set of tools for Linux cheat development
+.SH SYNOPSIS
+.nf
+.B memf [options] <intermediate blob>
+.B memfmerge <files...> <out blob>
+.B memftocsv <blob>
+.fi
+.SH DESCRIPTION
+.BR memf
+runs a memory scan on a process specified by
+.I -p
+for values that fit requirement specified by
+.I -f
+at range specified by
+.I -r
+or addresses provided by
+.I intermediate\ blob
+and then writes them into
+.IR intermediate\ blob.
+.I proc
+must be mounted into
+.I /proc/
+and you should be allowed to read
+.I /maps
+and
+.I /mem
+in order for the tool to work.
+By default, for new scan tool will only scan those addresses that are
+aligned to the size of type provided.
+If you wish to ignore the alignment and go byte-by-byte way, add ^
+to the beginning of your
+.I -f
+value.
+
+.BR memfmerge
+is a simple tool that lets you merge several blobs into one.
+
+.BR memftocsv
+is a tool you use to turn blob into a nice .csv human-readable table
+of addresses, types and values and print it to stdout.
+The format of the table is:
+
+.nf
+.ft CW
+.ft
+.I "address         type value"
+00007f2f3dd78bbc,i16,1337
+00007f2f3ddd04bc,i16,1337
+00007f2f3de34518,i32,1935
+00007f2f3de97df8,i32,34
+00007f2f3df4ed60,f32,66.6
+.fi
+
+.SH FILES
+.TP
+.B /usr/bin/memf
+memory scanner
+.TP
+.B /usr/bin/memfmerge
+memory scanner blob merge tool
+.TP
+.B /usr/bin/memftocsv
+turns memory scanner blobs into .csv
+
+.SH SEE ALSO
+.BR mmap (2),
+.BR proc (5),
+.BR steam (6)
+
+.SH COPYING
+Copyright (C) 2017 Constantine "fst3a" ...
+
+Permission is granted to make and distribute verbatim copies of this
+manual provided the copyright notice and this permission notice are
+preserved on all copies.
+
+Permission is granted to copy and distribute modified versions of this
+manual under the conditions for verbatim copying, provided that the
+entire resulting derived work is distributed under the terms of a
+permission notice identical to this one.
+
+The author(s) assume no responsibility for errors or omissions, or for
+damages resulting from the use of the information contained herein.
+The author(s) may not have taken the same level of care in the
+production of this manual, which is licensed free of charge, as they
+might when working professionally.
+
+Formatted or processed versions of this manual, if unaccompanied by
+the source, must acknowledge the copyright and authors of this work.
