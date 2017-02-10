@@ -1,0 +1,33 @@
+#!/bin/bash
+
+while getopts "p:f:" opt
+do
+case $opt in
+p) pid=$OPTARG;;
+f) file_load=$OPTARG;;
+esac
+done	
+
+
+if [ -f "$file_load" ]; then
+	load_stat="$(
+sudo gdb -n -q -batch \
+  -ex "attach $pid" \
+  -ex "set \$dlopen = (void*(*)(char*, int)) dlopen" \
+  -ex "call \$dlopen(\"$file_load\", 1)" \
+  -ex "detach" \
+  -ex "quit"
+)"
+else
+echo "Couldn't find file"
+exit 1
+fi
+
+last_line="${load_stat##*$'\n'}"
+
+if [ "$last_line" != "\$1 = (void *) 0x0" ]; then
+echo Load status: success
+else
+echo Load status: failure
+exit 1
+fi
